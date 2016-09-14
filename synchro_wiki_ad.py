@@ -4,12 +4,12 @@ from __future__ import unicode_literals
 
 import re
 import sys
-from ldap3 import Connection, Server, ALL, SUBTREE
+from ldap3 import Connection, Server, SUBTREE
 import pymysql.cursors
 
 def get_users_ad(server, user, password):
     """
-    Get users's names and user's groups to AD.
+    Get users'names and user's groups to AD.
 
     Args:
         param1 (str): the AD's server.
@@ -20,7 +20,7 @@ def get_users_ad(server, user, password):
         The list of users and the list of concat user:group.
                                                 ex : Toto.nom:Acces_Wiki_admin
     """
-    server1 = Server(server, get_info=ALL)
+    server1 = Server(server)
     try:
         conn = Connection(server1, user, password, auto_bind=True)
         conn.start_tls()
@@ -29,7 +29,7 @@ def get_users_ad(server, user, password):
     except Exception:
         print('ERROR: %s' % sys.exc_info()[1])
     list_ad = []
-    list_user_ad = []
+    list_ad_user = []
     for group in conn.entries:
         for people in group.member:
             match = re.match(r'^CN=(?P<cn>.*?),OU=.*', people)
@@ -40,13 +40,13 @@ def get_users_ad(server, user, password):
             for people in conn.entries:
                 try:
                     list_ad.append('%s%s'%(str(people['sAMAccountName'])[0].upper(), str(people['sAMAccountName'])[1:].lower())+':'+(str(group['sAMAccountName'])))
-                    list_user_ad.append('%s%s'%(str(people['sAMAccountName'])[0].upper(), str(people['sAMAccountName'])[1:].lower()))
+                    list_ad_user.append('%s%s'%(str(people['sAMAccountName'])[0].upper(), str(people['sAMAccountName'])[1:].lower()))
                 except Exception:
                     print('ERROR: %s' % sys.exc_info()[1])
-    return (list_ad, list_user_ad)
+    return (list_ad, list_ad_user)
 
 
-class BddWiki(object):
+class WikiDb(object):
     """
        Create the object to alter the Wiki base by synchronizing this base and AD's base.
     """
@@ -134,7 +134,7 @@ class BddWiki(object):
         """
         self.connexion.close()
 
-def update_bdd_wiki(bddwiki, list_ad, list_user_ad):
+def update_db_wiki(dbwiki, list_ad, list_ad_user):
     """
     Treatments allows the update of the database.
 
@@ -143,32 +143,32 @@ def update_bdd_wiki(bddwiki, list_ad, list_user_ad):
         param2 (list): the list of all couple user/group in AD.
         param3 (list): the list of all user in AD.
     """
-    list_user_ad = list(set(list_user_ad))
-    list_user_ad.sort()
-    list_user_bdd = bddwiki.users_list()
-    list_group_bdd = bddwiki.users_groups_list()
-    for index_ad in list_user_ad:
-        if (index_ad,) not in list_user_bdd:
+    list_ad_user = list(set(list_ad_user))
+    list_ad_user.sort()
+    list_db_user = dbwiki.users_list()
+    list_db_group = dbwiki.users_groups_list()
+    for index_ad in list_ad_user:
+        if (index_ad,) not in list_db_user:
             try:
-                bddwiki.insert_user(index_ad)
+                dbwiki.insert_user(index_ad)
             except Exception:
                 print('ERROR add_user: %s' % sys.exc_info()[1])
-    for index_bdd in list_user_bdd:
-        if index_bdd[0] not in list_user_ad:
+    for index_db in list_db_user:
+        if index_db[0] not in list_ad_user:
             try:
-                bddwiki.delete_user(index_bdd[0])
+                dbwiki.delete_user(index_db[0])
             except Exception:
                 print('ERROR delete_user: %s' % sys.exc_info()[1])
     for index_ad in list_ad:
-        if (index_ad.encode("Utf-8"),) not in list_group_bdd:
+        if (index_ad.encode("Utf-8"),) not in list_db_group:
             try:
-                bddwiki.insert_group((index_ad.split(':')[0]), (index_ad.split(':')[1]))
+                dbwiki.insert_group((index_ad.split(':')[0]), (index_ad.split(':')[1]))
             except Exception:
                 print('ERROR update_group: %s' % sys.exc_info()[1])
-    for index_bdd in list_group_bdd:
-        if index_bdd[0].decode() not in list_ad:
+    for index_db in list_db_group:
+        if index_db[0].decode() not in list_ad:
             try:
-                bddwiki.delete_group(((index_bdd[0].decode()).split(':')[0]), ((index_bdd[0].decode()).split(':')[1]))
+                dbwiki.delete_group(((index_db[0].decode()).split(':')[0]), ((index_db[0].decode()).split(':')[1]))
             except Exception:
                 print('ERROR delete_group: %s' % sys.exc_info()[1])
 
@@ -177,10 +177,10 @@ def run():
     """
     Launch in the order of functions and methods. And instantiated to object.
     """
-    list_ad, list_user_ad = get_users_ad('hostAD.domain.com', 'CN=user_ad,OU=USERS,DC=domain,DC=com', 'password')
-    bdd = BddWiki('host', 'user_bdd', 'password', 'wikidb')
-    update_bdd_wiki(bdd, list_ad, list_user_ad)
-    bdd.close()
+    list_ad, list_ad_user = get_users_ad('hostAD.domain.com', 'CN=user_ad,OU=USERS,DC=domain,DC=com', 'password')
+    db = WikiDb('host', 'user_db', 'password', 'wikidb')
+    update_db_wiki(db, list_ad, list_ad_user)
+    db.close()
 
 
 if __name__ == '__main__':
